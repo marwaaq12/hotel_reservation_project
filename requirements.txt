@@ -4,5 +4,5 @@ pymysql
 pandas
 numpy
 matplotlib
-folium
+foliumpython
 python-dotenv
