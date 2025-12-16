@@ -6,3 +6,4 @@ numpy
 matplotlib
 foliumpython
 python-dotenv
+#asma
