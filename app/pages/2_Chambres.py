@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from db import query  # Utilise votre module db.py configuré pour Docker
+from db import query  # Assurez-vous que votre module db.query fonctionne
 
 # ================== CONFIG ==================
 st.set_page_config(
@@ -36,7 +36,6 @@ st.subheader("🔍 Options de recherche")
 col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
 
 with col_f1:
-    # Radio button avec option "Toutes"
     type_choisi = st.radio(
         "**Type d'hébergement**",
         ["Toutes", "single", "double", "triple", "suite"],
@@ -45,7 +44,7 @@ with col_f1:
     )
 
 with col_f2:
-    # Sélection multiple pour les options/équipements
+    # Ces options doivent correspondre aux valeurs dans votre table HAS_SPACES
     options_sup = st.multiselect(
         "**Équipements souhaités**",
         ["Balcon", "Vue mer", "Climatisation", "Wifi", "Mini-bar"],
@@ -53,66 +52,82 @@ with col_f2:
     )
 
 with col_f3:
-    # Checkbox pour la cuisine
     a_cuisine = st.checkbox("**Avec Cuisine / Kitchenette**", value=False)
-
-st.divider()
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ================== CONSTRUCTION REQUÊTE SQL SIMPLIFIÉE ==================
-sql = "SELECT CodR as code_chambre, SurfaceArea, Floor, Type FROM ROOM WHERE 1=1"
+# ================== CONSTRUCTION REQUÊTE SQL ==================
+# On utilise R pour ROOM pour faciliter les jointures ou sous-requêtes
+sql = "SELECT CodR as code_chambre, SurfaceArea, Floor, Type FROM ROOM R WHERE 1=1"
 
-# Filtre Type (Radio Button)
+# 1. Filtre Type
 if type_choisi != "Toutes":
-    sql += f" AND Type = '{type_choisi}'"
+    sql += f" AND R.Type = '{type_choisi}'"
 
-# Filtre Cuisine (Checkbox)
+# 2. Filtre Cuisine (via la table HAS_SPACES)
 if a_cuisine:
-    sql += " AND HasKitchen = 1"
+    sql += """ 
+    AND R.CodR IN (
+        SELECT ROOM_CodR 
+        FROM HAS_SPACES 
+        WHERE SPACES_Space = 'kitchen'
+    )
+    """
 
-sql += " ORDER BY CodR"
+# 3. Filtre Équipements (via la table HAS_SPACES)
+if options_sup:
+    # Formatage de la liste pour SQL IN (...)
+    if len(options_sup) == 1:
+        options_sql = f"('{options_sup[0]}')"
+    else:
+        options_sql = tuple(options_sup)
+    
+    sql += f""" 
+    AND R.CodR IN (
+        SELECT ROOM_CodR 
+        FROM HAS_SPACES 
+        WHERE SPACES_Space IN {options_sql}
+    )
+    """
+
+sql += " ORDER BY R.CodR"
 
 # ================== EXÉCUTION & AFFICHAGE ==================
 try:
     df = query(sql)
 except Exception as e:
-    st.error(f"❌ Erreur SQL : {e}")
+    st.error(f"❌ Erreur lors de l'exécution de la requête: {str(e)}")
     df = pd.DataFrame()
 
 if not df.empty:
     # KPI
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     k1, k2, k3 = st.columns(3)
-    k1.metric("🛏️ Total", len(df))
-    k2.metric("📐 Surface Moy.", f"{df['SurfaceArea'].mean():.1f} m²")
-    k3.metric("🏢 Étages", df['Floor'].nunique())
+    k1.metric("🛏️ Chambres trouvées", len(df))
+    k2.metric("📐 Surface moyenne", f"{df['SurfaceArea'].mean():.1f} m²")
+    k3.metric("🏢 Étages couverts", df["Floor"].nunique())
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Tableau
+    # Tableau des résultats
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("📋 Liste des chambres")
+    st.subheader("📋 Liste détaillée")
     st.dataframe(df, use_container_width=True, hide_index=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Graphiques
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    t1, t2 = st.tabs(["📊 Répartition par Type", "📈 Surface par Étage"])
-    with t1:
-        st.bar_chart(df['Type'].value_counts())
-    with t2:
-        fig, ax = plt.subplots()
-        df.groupby('Floor')['SurfaceArea'].mean().plot(kind='bar', ax=ax, color='#4CAF50')
-        st.pyplot(fig)
-    st.markdown("</div>", unsafe_allow_html=True)
+
 else:
-    st.info("Aucune chambre ne correspond à ces critères.")
+    st.markdown("<div class='card' style='background: #FFF3E0;'>", unsafe_allow_html=True)
+    st.warning("⚠️ Aucune chambre ne correspond à ces critères.")
+    st.info("💡 Essayez de modifier vos filtres (notamment la cuisine ou les équipements).")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ================== SIDEBAR ==================
 with st.sidebar:
-
-    st.title("Paramètres")
-    if st.button("🔄 Actualiser les données"):
+    st.header("⚙️ Paramètres")
+    if st.button("🔄 Actualiser l'affichage"):
         st.rerun()
     st.divider()
-    
+    with st.expander("📖 Debug SQL"):
+        st.write("Requête exécutée :")
+        st.code(sql, language="sql")
+    st.caption("🏨 Hôtel Management System • 2025")
