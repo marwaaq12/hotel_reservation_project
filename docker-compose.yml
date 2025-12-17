@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
@@ -22,3 +20,15 @@ services:
       PMA_PORT: 3306
     ports:
       - "8081:80"
+
+  streamlit_app:
+    build: .
+    container_name: hotel_streamlit
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app

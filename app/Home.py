@@ -1,5 +1,15 @@
+import sys
+import os
+
+# Get the path to the project root (one level up from 'app')
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Add the root directory to the system path
+sys.path.append(ROOT_DIR)
+
 import streamlit as st
-from db import query
+import pandas as pd
+from db import query  # Assurez-vous que cette fonction fonctionne pour exécuter vos requêtes MySQL
 
 # ================== CONFIG ==================
 st.set_page_config(
@@ -11,29 +21,24 @@ st.set_page_config(
 # ================== STYLE PREMIUM ==================
 st.markdown("""
 <style>
-
 /* ----- BACKGROUND ----- */
 body {
     background: linear-gradient(180deg, #F1F8E9, #FFFFFF);
 }
-
 /* ----- TITRES ----- */
 h1, h2, h3 {
     color: #1B5E20;
     font-weight: 800;
 }
-
 .hero-title {
     font-size: 52px;
     font-weight: 900;
     color: #1B5E20;
 }
-
 .hero-subtitle {
     font-size: 22px;
     color: #388E3C;
 }
-
 /* ----- METRICS ----- */
 div[data-testid="metric-container"] {
     background: linear-gradient(135deg, #FFFFFF, #E8F5E9);
@@ -42,11 +47,9 @@ div[data-testid="metric-container"] {
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     transition: transform 0.3s ease;
 }
-
 div[data-testid="metric-container"]:hover {
     transform: scale(1.05);
 }
-
 /* ----- CARDS ----- */
 .card {
     background: white;
@@ -56,30 +59,26 @@ div[data-testid="metric-container"]:hover {
     text-align: center;
     transition: all 0.3s ease;
 }
-
 .card:hover {
     transform: translateY(-10px);
     box-shadow: 0 20px 40px rgba(0,0,0,0.15);
 }
-
 /* ----- BUTTONS ----- */
-button {
+.stButton > button {
     background: linear-gradient(135deg, #1B5E20, #4CAF50) !important;
     color: white !important;
     border-radius: 14px !important;
     font-weight: 700 !important;
+    border: none !important;
 }
-
 /* ----- SIDEBAR ----- */
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #E8F5E9, #C8E6C9);
 }
-
 /* ----- FOOTER ----- */
 footer {
     visibility: hidden;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,10 +92,13 @@ st.divider()
 col1, col2, col3 = st.columns(3)
 
 try:
-    nb_agences = query("SELECT COUNT(*) total FROM AGENCE").iloc[0, 0]
-    nb_chambres = query("SELECT COUNT(*) total FROM CHAMBRE").iloc[0, 0]
-    nb_reservations = query("SELECT COUNT(*) total FROM RESERVER").iloc[0, 0]
-except:
+    tables_in_db = [t.upper() for t in query("SHOW TABLES")['Tables_in_hotel_db'].tolist()]
+    nb_agences = query("SELECT COUNT(*) as total FROM TRAVEL_AGENCY").iloc[0, 0] if 'TRAVEL_AGENCY' in tables_in_db else 0
+    nb_chambres = query("SELECT COUNT(*) as total FROM ROOM").iloc[0, 0] if 'ROOM' in tables_in_db else 0
+    nb_reservations = query("SELECT COUNT(*) as total FROM BOOKING").iloc[0, 0] if 'BOOKING' in tables_in_db else 0
+
+except Exception as e:
+    st.warning(f"Certaines tables n'existent pas encore: {e}")
     nb_agences = nb_chambres = nb_reservations = 0
 
 col1.metric("📍 Agences partenaires", nb_agences)
@@ -182,32 +184,46 @@ des réservations d'une chaîne hôtelière à l'aide de Streamlit et MySQL.
 
 with right:
     st.success("""
-👩‍🎓 **Réalisé par**
+    👩‍🎓 **Réalisé par**
+    * **Sophia Yassfouli**
+    * **Asma Bennani**
+    * **Zakaria Zaki**
+    * **Marwa Aqrir**
+    * **Badr Eddaoudi**
+    * **Ayoub Sabri**
 
-**Sophia Yassfouli**  
-ENSA  
-Python • Streamlit • MySQL • SQLAlchemy
-""")
+    **ENSA** | Python • Streamlit • MySQL
+    """)
 
 # ================== SIDEBAR ==================
 with st.sidebar:
     st.header("🧭 Navigation")
-    st.write("""
-- 🏠 Accueil  
-- 📍 Agences  
-- 🛏️ Chambres  
-- 📅 Réservations  
-""")
+
+    page = st.selectbox(
+        "Choisissez une page",
+        ["🏠 Accueil", "📍 Agences", "🛏️ Chambres", "📅 Réservations", "📊 Statistiques"]
+    )
 
     st.divider()
 
     if st.button("🔌 Tester la connexion", use_container_width=True):
         try:
-            query("SHOW TABLES")
+            tables = query("SHOW TABLES")
             st.success("✅ Connexion réussie")
+            st.write(f"Tables trouvées: {len(tables)}")
+            with st.expander("Voir les tables"):
+                st.dataframe(tables)
         except Exception as e:
-            st.error("❌ Erreur de connexion")
-            st.code(str(e))
+            st.error(f"❌ Erreur de connexion: {e}")
 
     st.divider()
-    st.caption("🏨 Hôtel Management System • 2024")
+
+    with st.expander("📊 Info Base de Données"):
+        try:
+            db_info = query("SELECT DATABASE() as current_db, USER() as current_user")
+            st.write(f"Base: {db_info.iloc[0, 0]}")
+            st.write(f"Utilisateur: {db_info.iloc[0, 1]}")
+        except:
+            st.write("Impossible de récupérer les infos DB")
+
+    st.caption("🏨 Hôtel Management System • 2025")

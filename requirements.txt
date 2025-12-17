@@ -4,5 +4,6 @@ pymysql
 pandas
 numpy
 matplotlib
-foliumpython
+folium
 python-dotenv
+cryptography

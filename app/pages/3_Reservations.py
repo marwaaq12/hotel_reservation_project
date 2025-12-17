@@ -1,6 +1,5 @@
 import streamlit as st
-from db import query
-import matplotlib.pyplot as plt
+from db import query  # Assurez-vous que cette fonction exécute bien vos requêtes SQL
 
 # ================== CONFIG ==================
 st.set_page_config(
@@ -9,120 +8,114 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================== STYLE ULTRA VERT ==================
+# ================== STYLE ==================
 st.markdown("""
 <style>
-
-/* ===== PAGE BACKGROUND ===== */
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(180deg, #E8F5E9 0%, #FFFFFF 60%);
-}
-
-/* ===== TITRES ===== */
-h1, h2, h3 {
-    color: #1B5E20 !important;
-    font-weight: 900;
-}
-
-/* ===== METRICS ===== */
-div[data-testid="metric-container"] {
-    background: linear-gradient(135deg, #C8E6C9, #E8F5E9);
-    border-radius: 22px;
-    padding: 24px;
-    box-shadow: 0 12px 30px rgba(27,94,32,0.25);
-    border: 2px solid #81C784;
-}
-
-div[data-testid="metric-container"] * {
-    color: #1B5E20 !important;
-    font-weight: 800;
-}
-
-/* ===== DATAFRAME ===== */
-[data-testid="stDataFrame"] {
-    background-color: #F1F8E9;
+[data-testid="stAppViewContainer"] { background: linear-gradient(180deg, #F1F8E9, #FFFFFF); }
+h1, h2, h3 { color: #1B5E20; font-weight: 800; }
+div[data-testid="metric-container"] { 
+    background: linear-gradient(135deg, #FFFFFF, #E8F5E9);
     border-radius: 20px;
-    border: 2px solid #A5D6A7;
+    padding: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }
-
-/* ===== PLOTS ===== */
-svg {
-    background-color: #F1F8E9;
-    border-radius: 18px;
-}
-
-/* ===== REMOVE FOOTER ===== */
-footer {visibility: hidden;}
-
 </style>
 """, unsafe_allow_html=True)
 
-# ================== HEADER ==================
-st.markdown("## 📅 Analyse des Réservations")
-st.markdown("### 💚 Tableau de bord des prix journaliers")
+# ================== HERO ==================
+st.title("📅 Gestion des Réservations")
 st.divider()
 
-# ================== KPI ==================
+# ================== METRICS ==================
 col1, col2, col3 = st.columns(3)
 
-total_res = query("SELECT COUNT(*) total FROM RESERVER").iloc[0, 0]
-prix_moy = query("SELECT ROUND(AVG(PRIX),2) prix FROM RESERVER").iloc[0, 0]
-best = query("""
-    SELECT CHCODE
-    FROM RESERVER
-    GROUP BY CHCODE
-    ORDER BY AVG(PRIX) DESC
-    LIMIT 1
-""").iloc[0, 0]
+try:
+    total = query("SELECT COUNT(*) FROM BOOKING").iloc[0, 0]
+    revenu = query("SELECT SUM(Cost) FROM BOOKING").iloc[0, 0]
+    prix_moy = query("SELECT AVG(Cost) FROM BOOKING").iloc[0, 0]
 
-col1.metric("📌 Réservations", total_res)
-col2.metric("💰 Prix moyen", f"{prix_moy} €")
-col3.metric("🏆 Chambre la plus chère", best)
+    chambre_pop = query("""
+        SELECT ROOM_CodR, COUNT(*) as nb_reservations
+        FROM BOOKING 
+        GROUP BY ROOM_CodR 
+        ORDER BY nb_reservations DESC 
+        LIMIT 1
+    """)
 
-st.divider()
+    chambre_top = chambre_pop.iloc[0, 0] if not chambre_pop.empty else "N/A"
 
-# ================== TABLE ==================
-st.subheader("📊 Coût journalier moyen par mois")
+except Exception as e:
+    total = revenu = prix_moy = 0
+    chambre_top = "N/A"
 
-df = query("""
-    SELECT 
-        MONTH(DATE_DEBUT) AS mois,
-        ROUND(AVG(PRIX),2) AS prix_moyen
-    FROM RESERVER
-    GROUP BY mois
-    ORDER BY mois
-""")
-
-st.dataframe(df, use_container_width=True)
-
-# ================== GRAPH ==================
-st.subheader("📈 Évolution mensuelle")
-
-plt.figure()
-plt.plot(
-    df["mois"],
-    df["prix_moyen"],
-    marker="o",
-    linewidth=3,
-    color="green"
-)
-plt.xlabel("Mois")
-plt.ylabel("Prix moyen (€)")
-plt.title("Évolution du coût journalier moyen")
-plt.grid(True)
-
-st.pyplot(plt)
+col1.metric("📅 Réservations", total)
+col2.metric("💰 Revenu total", f"{revenu:,.0f} €" if revenu else "0 €")
+col3.metric("👑 Chambre populaire", chambre_top)
 
 st.divider()
 
-# ================== TOP ROOMS ==================
-st.subheader("🏆 Chambres les plus chères")
 
-top = query("""
-    SELECT CHCODE, ROUND(AVG(PRIX),2) prix_moyen
-    FROM RESERVER
-    GROUP BY CHCODE
-    ORDER BY prix_moyen DESC
-""")
+# ================== DERNIÈRES RÉSERVATIONS ==================
+st.divider()
+st.subheader("📋 Dernières réservations")
 
-st.dataframe(top, use_container_width=True)
+try:
+    recent = query("""
+        SELECT 
+            B.ROOM_CodR as Chambre,
+            B.StartDate as Début,
+            B.EndDate as Fin,
+            B.Cost as `Prix (€)`,
+            A.CodA as Agence,
+            A.City_Address as `Ville agence`
+        FROM BOOKING B
+        JOIN TRAVEL_AGENCY A ON B.TRAVEL_AGENCY_CodA = A.CodA
+        ORDER BY B.StartDate DESC
+        LIMIT 10
+    """)
+
+    if not recent.empty:
+        st.dataframe(recent, use_container_width=True)
+    else:
+        st.info("Aucune réservation récente")
+
+except Exception as e:
+    st.warning("Impossible de charger les réservations")
+
+# ================== CHAMBRE LA PLUS CHÈRE PAR MOIS ==================
+st.subheader("💸 Chambre la Plus Chère par Mois")
+
+try:
+    monthly_cost = query("""
+        SELECT 
+            MONTH(B.StartDate) as Mois,
+            R.CodR,
+            R.Floor,
+            R.SurfaceArea,
+            R.Type,
+            AVG(B.Cost) as Cout_moy
+        FROM BOOKING B
+        JOIN ROOM R ON B.ROOM_CodR = R.CodR
+        GROUP BY MONTH(B.StartDate), R.CodR, R.Floor, R.SurfaceArea, R.Type
+    """)
+    
+    if not monthly_cost.empty:
+        idx = monthly_cost.groupby('Mois')['Cout_moy'].idxmax()
+        top_rooms = monthly_cost.loc[idx].sort_values('Mois')
+        st.dataframe(top_rooms[['Mois','CodR','Floor','SurfaceArea','Type','Cout_moy']], use_container_width=True)
+        
+        # Graphique du coût moyen journalier
+        st.subheader("📈 Évolution du Coût Journalier Moyen")
+        monthly_avg = monthly_cost.groupby('Mois')['Cout_moy'].mean()
+        st.line_chart(monthly_avg)
+    else:
+        st.info("Aucune donnée disponible")
+        
+except Exception as e:
+    st.warning(f"Impossible de charger l'analyse du coût journalier: {e}")
+
+st.markdown("---")
+st.caption("📅 Module Réservations • Base: hotel")
+
+st.divider()
+st.caption("📅 Module Réservations • Base: hotel")
